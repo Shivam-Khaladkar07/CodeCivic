@@ -1,0 +1,12 @@
+{
+  "name": "civicforge-sih-2026",
+  "version": "1.0.0",
+  "description": "CivicForge: Jharkhand Societal Innovation Exchange for Smart India Hackathon 2026",
+  "scripts": {
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build:backend": "npm run build --prefix backend",
+    "build:frontend": "npm run build --prefix frontend",
+    "seed": "npm run seed --prefix backend"
+  }
+}
