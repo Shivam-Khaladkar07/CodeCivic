@@ -1,0 +1,25 @@
+# Render Blueprint for CivicForge Backend Web Service
+services:
+  - type: web
+    name: civicforge-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: file:./data/database.json
+      - key: AI_MODE
+        value: demo
+      - key: AI_MODEL
+        value: gemini-1.5-flash
+      - key: STORAGE_URL
+        value: local
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        value: https://civicforge-jharkhand.netlify.app

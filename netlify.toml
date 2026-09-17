@@ -1,0 +1,12 @@
+# Netlify configuration for CivicForge (Root Monorepo)
+
+[build]
+  base = "frontend"
+  publish = "dist"
+  command = "npm run build"
+
+# SPA Fallback rule for React Router
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
