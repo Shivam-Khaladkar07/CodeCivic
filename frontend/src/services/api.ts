@@ -9,18 +9,49 @@ import {
   Notification,
 } from '../types';
 
+import { readToken } from '../utils/storage';
+
+/**
+ * Error raised whenever the backend cannot be reached or did not answer with
+ * real API data. Callers can branch on `isApiUnavailable(err)` to render an
+ * offline/demo state instead of treating the failure as fatal.
+ */
+export class ApiUnavailableError extends Error {
+  readonly isApiUnavailable = true;
+  readonly reason: 'not-configured' | 'html-fallback' | 'network' | 'server';
+
+  constructor(message: string, reason: ApiUnavailableError['reason']) {
+    super(message);
+    this.name = 'ApiUnavailableError';
+    this.reason = reason;
+  }
+}
+
+export const isApiUnavailable = (err: unknown): boolean =>
+  Boolean(err && typeof err === 'object' && (err as { isApiUnavailable?: boolean }).isApiUnavailable);
+
 // Resolve API base URL: prioritize VITE_API_URL from environment, fallback to '/api' for Vite dev proxy
 const resolveApiBaseUrl = (): string => {
   const envUrl = import.meta.env.VITE_API_URL;
   if (!envUrl) {
     return '/api';
   }
-  const trimmed = envUrl.trim().replace(/\/+$/, '');
+  const trimmed = String(envUrl).trim().replace(/\/+$/, '');
+  if (!trimmed) {
+    return '/api';
+  }
   return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
 };
 
+/** True when VITE_API_URL points at an explicit backend origin. */
+export const isApiConfigured = Boolean(String(import.meta.env.VITE_API_URL || '').trim());
+
+export const API_BASE_URL = resolveApiBaseUrl();
+
 const api = axios.create({
-  baseURL: resolveApiBaseUrl(),
+  baseURL: API_BASE_URL,
+  // Never hang forever when the backend host is unreachable or blackholes the request.
+  timeout: 20000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -28,12 +59,59 @@ const api = axios.create({
 
 // Intercept requests to attach auth token
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('jsix_token');
+  const token = readToken();
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
+
+const looksLikeHtml = (value: unknown): boolean =>
+  typeof value === 'string' && /^\s*(?:<!doctype html|<html)/i.test(value);
+
+/**
+ * Guard against a "successful" response that is not actually API data.
+ *
+ * On static hosting the SPA fallback rewrite answers every unmatched path —
+ * including `/api/*` — with `index.html` at HTTP 200. Axios treats that as a
+ * success, so callers would assign an HTML string (or `undefined` after
+ * reading a field off it) into state and crash on the next render. Treating a
+ * non-JSON body as a failure keeps those responses in the `catch` branch.
+ */
+api.interceptors.response.use(
+  (response) => {
+    const contentType = String(
+      (response.headers as Record<string, unknown> | undefined)?.['content-type'] ?? ''
+    ).toLowerCase();
+
+    if (contentType.includes('text/html') || looksLikeHtml(response.data)) {
+      throw new ApiUnavailableError(
+        'Backend API is not reachable: received an HTML document instead of JSON. ' +
+          'Set VITE_API_URL to the deployed backend origin.',
+        'html-fallback'
+      );
+    }
+
+    return response;
+  },
+  (error) => {
+    if (isApiUnavailable(error)) {
+      return Promise.reject(error);
+    }
+
+    // No response at all: DNS failure, connection refused, CORS block, timeout.
+    if (!(error as { response?: unknown })?.response) {
+      return Promise.reject(
+        new ApiUnavailableError(
+          (error as Error)?.message || 'Backend API is not reachable.',
+          'network'
+        )
+      );
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 export const authApi = {
   login: (email: string, password: string) => api.post<{ token: string; user: User }>('/auth/login', { email, password }),
