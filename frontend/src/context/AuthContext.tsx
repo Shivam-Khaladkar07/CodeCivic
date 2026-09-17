@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
 import { authApi } from '../services/api';
 
+import { safeStorage } from '../utils/storage';
+
 interface AuthContextType {
   user: User | null;
   token: string | null;
@@ -28,19 +30,25 @@ const DEMO_EMAILS: Record<UserRole, string> = {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('jsix_token'));
+  const [token, setToken] = useState<string | null>(() => safeStorage.getItem('jsix_token'));
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
     const initAuth = async () => {
-      const storedToken = localStorage.getItem('jsix_token');
+      const storedToken = safeStorage.getItem('jsix_token');
       if (storedToken) {
         try {
           const res = await authApi.getMe();
-          setUser(res.data.user);
+          if (res.data && res.data.user) {
+            setUser(res.data.user);
+          } else {
+            safeStorage.removeItem('jsix_token');
+            setToken(null);
+            setUser(null);
+          }
         } catch (err) {
-          console.error('Session expired or invalid token:', err);
-          localStorage.removeItem('jsix_token');
+          console.warn('Session expired or backend offline:', err);
+          safeStorage.removeItem('jsix_token');
           setToken(null);
           setUser(null);
         }
@@ -54,9 +62,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       const res = await authApi.login(email, pass);
-      localStorage.setItem('jsix_token', res.data.token);
-      setToken(res.data.token);
-      setUser(res.data.user);
+      if (res.data && res.data.token && res.data.user) {
+        safeStorage.setItem('jsix_token', res.data.token);
+        setToken(res.data.token);
+        setUser(res.data.user);
+      } else {
+        throw new Error('Invalid authentication response structure from server.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -68,7 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
-    localStorage.removeItem('jsix_token');
+    safeStorage.removeItem('jsix_token');
     setToken(null);
     setUser(null);
   };

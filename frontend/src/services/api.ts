@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { safeStorage } from '../utils/storage';
 import {
   User,
   Challenge,
@@ -9,26 +10,12 @@ import {
   Notification,
 } from '../types';
 
-import { readToken } from '../utils/storage';
-
-/**
- * Error raised whenever the backend cannot be reached or did not answer with
- * real API data. Callers can branch on `isApiUnavailable(err)` to render an
- * offline/demo state instead of treating the failure as fatal.
- */
 export class ApiUnavailableError extends Error {
-  readonly isApiUnavailable = true;
-  readonly reason: 'not-configured' | 'html-fallback' | 'network' | 'server';
-
-  constructor(message: string, reason: ApiUnavailableError['reason']) {
+  constructor(message = 'CivicForge backend is currently unavailable or returning an invalid response.') {
     super(message);
     this.name = 'ApiUnavailableError';
-    this.reason = reason;
   }
 }
-
-export const isApiUnavailable = (err: unknown): boolean =>
-  Boolean(err && typeof err === 'object' && (err as { isApiUnavailable?: boolean }).isApiUnavailable);
 
 // Resolve API base URL: prioritize VITE_API_URL from environment, fallback to '/api' for Vite dev proxy
 const resolveApiBaseUrl = (): string => {
@@ -36,79 +23,52 @@ const resolveApiBaseUrl = (): string => {
   if (!envUrl) {
     return '/api';
   }
-  const trimmed = String(envUrl).trim().replace(/\/+$/, '');
-  if (!trimmed) {
-    return '/api';
-  }
+  const trimmed = envUrl.trim().replace(/\/+$/, '');
   return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
 };
 
-/** True when VITE_API_URL points at an explicit backend origin. */
-export const isApiConfigured = Boolean(String(import.meta.env.VITE_API_URL || '').trim());
-
-export const API_BASE_URL = resolveApiBaseUrl();
-
 const api = axios.create({
-  baseURL: API_BASE_URL,
-  // Never hang forever when the backend host is unreachable or blackholes the request.
-  timeout: 20000,
+  baseURL: resolveApiBaseUrl(),
+  timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Intercept requests to attach auth token
+// Intercept requests to attach auth token using safeStorage
 api.interceptors.request.use((config) => {
-  const token = readToken();
+  const token = safeStorage.getItem('jsix_token');
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-const looksLikeHtml = (value: unknown): boolean =>
-  typeof value === 'string' && /^\s*(?:<!doctype html|<html)/i.test(value);
-
-/**
- * Guard against a "successful" response that is not actually API data.
- *
- * On static hosting the SPA fallback rewrite answers every unmatched path —
- * including `/api/*` — with `index.html` at HTTP 200. Axios treats that as a
- * success, so callers would assign an HTML string (or `undefined` after
- * reading a field off it) into state and crash on the next render. Treating a
- * non-JSON body as a failure keeps those responses in the `catch` branch.
- */
+// Intercept responses: strictly reject HTML SPA fallback responses, timeouts, and connection drops
 api.interceptors.response.use(
   (response) => {
-    const contentType = String(
-      (response.headers as Record<string, unknown> | undefined)?.['content-type'] ?? ''
-    ).toLowerCase();
+    const contentType = response.headers ? (response.headers['content-type'] || response.headers['Content-Type'] || '') : '';
+    const isHtmlContent = typeof contentType === 'string' && contentType.toLowerCase().includes('text/html');
+    const isHtmlBody =
+      typeof response.data === 'string' &&
+      (response.data.includes('<!DOCTYPE html>') ||
+        response.data.includes('<html') ||
+        response.data.includes('<div id="root">') ||
+        response.data.includes('<head>'));
 
-    if (contentType.includes('text/html') || looksLikeHtml(response.data)) {
-      throw new ApiUnavailableError(
-        'Backend API is not reachable: received an HTML document instead of JSON. ' +
-          'Set VITE_API_URL to the deployed backend origin.',
-        'html-fallback'
+    if (isHtmlContent || isHtmlBody) {
+      return Promise.reject(
+        new ApiUnavailableError('Received HTML SPA fallback instead of JSON API response from server.')
       );
     }
-
     return response;
   },
   (error) => {
-    if (isApiUnavailable(error)) {
-      return Promise.reject(error);
-    }
-
-    // No response at all: DNS failure, connection refused, CORS block, timeout.
-    if (!(error as { response?: unknown })?.response) {
+    if (!error.response || error.code === 'ECONNABORTED' || (error.message && error.message.includes('Network Error'))) {
       return Promise.reject(
-        new ApiUnavailableError(
-          (error as Error)?.message || 'Backend API is not reachable.',
-          'network'
-        )
+        new ApiUnavailableError(error.message || 'CivicForge backend API is currently unreachable.')
       );
     }
-
     return Promise.reject(error);
   }
 );

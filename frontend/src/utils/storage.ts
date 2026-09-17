@@ -1,71 +1,38 @@
-/**
- * Safe wrappers around Web Storage.
- *
- * `localStorage` is not guaranteed to exist or be usable: it throws on access
- * in some privacy modes, inside sandboxed iframes, and when the browser has
- * blocked site data. An exception in module scope or during render would take
- * the whole React tree down, so every access is guarded here.
- */
+// Safe localStorage helper with in-memory fallback for private modes or restricted web contexts
+const memoryStorage: Record<string, string> = {};
 
-export const TOKEN_KEY = 'jsix_token';
+export const safeStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.getItem(key);
+      }
+    } catch (e) {
+      console.warn(`[SafeStorage] Could not read '${key}' from localStorage:`, e);
+    }
+    return memoryStorage[key] || null;
+  },
 
-const getStore = (): Storage | null => {
-  try {
-    if (typeof window === 'undefined' || !window.localStorage) return null;
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-};
+  setItem: (key: string, value: string): void => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(key, value);
+        return;
+      }
+    } catch (e) {
+      console.warn(`[SafeStorage] Could not save '${key}' to localStorage:`, e);
+    }
+    memoryStorage[key] = value;
+  },
 
-export const safeGetItem = (key: string): string | null => {
-  try {
-    return getStore()?.getItem(key) ?? null;
-  } catch {
-    return null;
-  }
-};
-
-export const safeSetItem = (key: string, value: string): void => {
-  try {
-    getStore()?.setItem(key, value);
-  } catch {
-    /* storage unavailable or quota exceeded — non-fatal */
-  }
-};
-
-export const safeRemoveItem = (key: string): void => {
-  try {
-    getStore()?.removeItem(key);
-  } catch {
-    /* storage unavailable — non-fatal */
-  }
-};
-
-export const readToken = (): string | null => {
-  const token = safeGetItem(TOKEN_KEY);
-  // Guard against literal "undefined"/"null" strings left by earlier writes.
-  if (!token || token === 'undefined' || token === 'null') return null;
-  return token;
-};
-
-export const writeToken = (token: string | null | undefined): void => {
-  if (typeof token !== 'string' || !token) {
-    safeRemoveItem(TOKEN_KEY);
-    return;
-  }
-  safeSetItem(TOKEN_KEY, token);
-};
-
-export const clearToken = (): void => safeRemoveItem(TOKEN_KEY);
-
-/** Parse JSON without throwing; returns `fallback` on any malformed input. */
-export const safeJsonParse = <T>(raw: string | null, fallback: T): T => {
-  if (!raw) return fallback;
-  try {
-    const parsed = JSON.parse(raw);
-    return (parsed ?? fallback) as T;
-  } catch {
-    return fallback;
-  }
+  removeItem: (key: string): void => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem(key);
+      }
+    } catch (e) {
+      console.warn(`[SafeStorage] Could not remove '${key}' from localStorage:`, e);
+    }
+    delete memoryStorage[key];
+  },
 };

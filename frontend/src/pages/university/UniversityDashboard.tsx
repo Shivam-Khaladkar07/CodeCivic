@@ -14,23 +14,78 @@ import { dashboardsApi, universitiesApi } from '../../services/api';
 import { Project, University } from '../../types';
 import { IRLProgress } from '../../components/common/IRLProgress';
 
+const DEFAULT_UNI_DATA = {
+  university: {
+    id: 'UNI-BAU',
+    name: 'Birsa Agricultural University (BAU)',
+    short_code: 'BAU',
+    district: 'Ranchi',
+    type: 'State Agricultural',
+    address: 'Kanke, Ranchi, Jharkhand 834006',
+    research_domains: ['Agriculture', 'Water Resources', 'Rural Livelihoods'],
+  },
+  kpis: {
+    active_projects: 8,
+    faculty_mentors: 18,
+    prototypes_in_lab: 5,
+    field_pilots: 3,
+  },
+  projects: [
+    {
+      id: 'PROJ-JH-AGRI-01',
+      title: 'Smart Solar-Grid Hybrid VFD Controller & IoT Irrigation Protector',
+      irl_level: 'IRL-6',
+      status: 'ACTIVE',
+      lead_faculty_name: 'Dr. A. K. Sharma',
+      student_lead_name: 'Pooja Hansda',
+      updated_at: '2024-03-10T10:00:00Z',
+    },
+  ],
+  recommendations: [
+    {
+      challenge: {
+        id: 'JH-RNC-1001',
+        title: 'Irrigation pump frequently stops because of voltage fluctuations',
+        district: 'Ranchi',
+        primary_domain: 'Agriculture',
+        urgency: 'high',
+        priority_score: 88,
+        affected_population: 1800,
+      },
+      match_score: 91,
+      match_breakdown: {
+        domain_expertise: 95,
+        faculty_expertise: 82,
+        lab_infrastructure: 92,
+        geography: 100,
+      },
+    },
+  ],
+};
+
 export const UniversityDashboard: React.FC = () => {
   const navigate = useNavigate();
   const [data, setData] = useState<{
-    university: University;
+    university: any;
     kpis: any;
-    projects: Project[];
+    projects: any[];
     recommendations: any[];
-  } | null>(null);
+  }>(DEFAULT_UNI_DATA);
   const [isLoading, setIsLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
 
   useEffect(() => {
     const fetchUniData = async () => {
       try {
         const res = await dashboardsApi.getUniversity();
-        setData(res.data);
+        if (res.data && res.data.university && res.data.kpis) {
+          setData(res.data);
+        } else {
+          setIsOffline(true);
+        }
       } catch (err) {
-        console.error('Failed to load university dashboard:', err);
+        console.warn('Backend offline, loaded fallback university intelligence:', err);
+        setIsOffline(true);
       } finally {
         setIsLoading(false);
       }
@@ -54,18 +109,29 @@ export const UniversityDashboard: React.FC = () => {
     }
   };
 
-  if (isLoading || !data) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 py-20 text-center text-xs text-slate-400">
-        Loading University Innovation Portal...
-      </div>
-    );
-  }
-
-  const { university, kpis, projects, recommendations } = data;
+  const university = data?.university || DEFAULT_UNI_DATA.university;
+  const kpis = data?.kpis || DEFAULT_UNI_DATA.kpis;
+  const projects = Array.isArray(data?.projects) ? data.projects : DEFAULT_UNI_DATA.projects;
+  const recommendations = Array.isArray(data?.recommendations)
+    ? data.recommendations
+    : DEFAULT_UNI_DATA.recommendations;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+      {isOffline && (
+        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <GraduationCap className="h-4 w-4 text-amber-600 flex-shrink-0" />
+            <span>
+              <strong>CivicForge Presentation Mode:</strong> Backend service is currently undeployed on Render. Displaying pre-loaded university marketplace data and recommendations.
+            </span>
+          </div>
+          <span className="text-[10px] font-mono bg-amber-200/60 px-2 py-0.5 rounded text-amber-800 flex-shrink-0 font-bold">
+            Render Backend Pending
+          </span>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="bg-gradient-to-r from-navy-950 to-navy-800 text-white rounded-3xl p-6 sm:p-8 shadow-elevated flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-center gap-4">
@@ -80,7 +146,7 @@ export const UniversityDashboard: React.FC = () => {
             </div>
             <h1 className="text-2xl sm:text-3xl font-black">{university.name}</h1>
             <p className="text-xs text-slate-300 mt-0.5">
-              {university.address} • Research Domains: {university.research_domains.join(', ')}
+              {university.address} • Research Domains: {(university.research_domains || []).join(', ')}
             </p>
           </div>
         </div>

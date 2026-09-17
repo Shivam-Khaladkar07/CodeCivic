@@ -561,7 +561,7 @@ export const SubmitChallengeWizard: React.FC = () => {
           />
 
           {/* Semantic Duplicate & Problem Cluster Notice */}
-          {submissionResult.duplicates && submissionResult.duplicates.length > 0 && (
+          {Array.isArray(submissionResult.duplicates) && submissionResult.duplicates.length > 0 && (
             <div className="bg-white rounded-2xl border border-amber-200 p-5 shadow-soft space-y-3">
               <div className="flex items-center gap-2 text-amber-800">
                 <Layers className="h-5 w-5 text-amber-600" />
