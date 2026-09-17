@@ -77,7 +77,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenGoldenDemo }) =>
   ];
 
   return (
-    <div className="space-y-16 pb-20">
+    <div className="space-y-16">
       {/* 1. HERO SECTION */}
       <section className="relative overflow-hidden bg-navy-900 text-white pt-16 pb-20 sm:pt-24 sm:pb-28">
         {/* Subtle background glow */}
@@ -88,8 +88,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenGoldenDemo }) =>
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6">
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-navy-800 border border-navy-700 text-xs font-semibold text-slate-300">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-400"></span>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-navy-800/90 border border-navy-700 text-xs font-semibold text-slate-300 shadow-sm">
+            <img src="/logo-icon.png" alt="CivicForge Icon" className="h-4 w-4 rounded-full object-cover" />
             <span>CivicForge • State Societal Innovation Framework (SIH 2026)</span>
             <span className="text-purple-400 font-bold">•</span>
             <span className="text-amber-300">Prototype Environment</span>
@@ -348,15 +348,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenGoldenDemo }) =>
       </section>
 
       {/* 8. FOOTER */}
-      <footer className="bg-navy-950 text-slate-400 border-t border-navy-800 pt-12 pb-8">
+      <footer className="bg-[#07111E] text-slate-400 border-t border-[#132846] pt-12 pb-8 w-full mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-lg bg-brand-blue flex items-center justify-center font-black text-white text-sm">
-                  CF
-                </div>
-                <span className="text-base font-black text-white">CivicForge</span>
+              <div className="flex items-center gap-3">
+                <img
+                  src="/logo-icon.png"
+                  alt="CivicForge Logo"
+                  className="h-9 w-9 object-cover rounded-xl border border-cyan-500/30 shadow-md shadow-cyan-500/20"
+                />
+                <span className="text-lg font-black text-white tracking-tight">
+                  Civic<span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">Forge</span>
+                </span>
               </div>
               <p className="text-xs leading-relaxed text-slate-400">
                 CivicForge: Jharkhand Societal Innovation Exchange — an end-to-end civic-to-impact platform built for Smart India

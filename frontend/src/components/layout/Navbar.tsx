@@ -68,14 +68,21 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenGoldenDemo }) => {
       {/* Main Navbar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Brand Logo */}
-        <Link to="/" className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-brand-blue to-brand-teal flex items-center justify-center font-black text-lg text-white shadow-md shadow-blue-500/20">
-            CF
+        <Link to="/" className="flex items-center gap-3 group">
+          <div className="relative">
+            <img
+              src="/logo-icon.png"
+              alt="CivicForge Logo"
+              className="h-10 w-10 sm:h-11 sm:w-11 object-cover rounded-xl border border-cyan-500/30 shadow-md shadow-cyan-500/20 group-hover:scale-105 group-hover:border-cyan-400 transition-all duration-300"
+            />
+            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-navy-950 rounded-full" title="Platform Operational" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="text-lg font-black tracking-tight text-white">CivicForge</span>
-              <span className="text-[10px] bg-brand-blue/30 text-brand-blue border border-brand-blue/50 px-1.5 py-0.2 rounded font-bold">
+              <span className="text-lg font-black tracking-tight text-white group-hover:text-cyan-300 transition-colors">
+                Civic<span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-400">Forge</span>
+              </span>
+              <span className="text-[10px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 px-1.5 py-0.5 rounded font-bold tracking-wider">
                 JHARKHAND
               </span>
             </div>

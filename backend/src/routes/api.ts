@@ -9,12 +9,15 @@ import { ClusteringService } from '../services/clusteringService.js';
 import {
   Challenge,
   ChallengeValidation,
+  ChallengeCluster,
   User,
   Project,
   ProjectMilestone,
   ProjectTask,
+  ProjectTeamMember,
   ProjectComment,
   IndustryCollaboration,
+  ImpactRecord,
   SystemSettings,
   IRLStage,
 } from '../models/types.js';
@@ -123,9 +126,10 @@ router.get('/auth/demo-accounts', (req: Request, res: Response) => {
 
 router.get('/challenges', (req: Request, res: Response) => {
   try {
-    const { district, domain, urgency, status, cluster_id, search, limit = 50, page = 1 } = req.query;
+    const { district, domain, urgency, status, cluster_id, citizen_id, search, limit = 50, page = 1 } = req.query;
     let list: Challenge[] = db.getTable('challenges');
 
+    if (citizen_id) list = list.filter((c) => c.citizen_id === String(citizen_id));
     if (district) list = list.filter((c) => c.district.toLowerCase() === String(district).toLowerCase());
     if (domain) list = list.filter((c) => c.primary_domain.toLowerCase() === String(domain).toLowerCase());
     if (urgency) list = list.filter((c) => c.urgency.toLowerCase() === String(urgency).toLowerCase());
@@ -407,6 +411,88 @@ router.get('/clusters/:id', (req: Request, res: Response) => {
   });
 });
 
+// Create new systemic cluster
+router.post('/clusters', authenticateToken, requireRole(['government', 'panchayat_ulb', 'admin']), (req: AuthRequest, res: Response) => {
+  const { cluster_title, primary_domain, district, challenge_ids = [], description, severity = 'severe' } = req.body;
+  if (!cluster_title || !primary_domain || !district) {
+    return res.status(400).json({ error: 'Cluster title, primary domain, and district are required' });
+  }
+
+  const allChallenges = db.getTable('challenges');
+  const challenges = allChallenges.filter((c) => challenge_ids.includes(c.id));
+  const totalPop = challenges.reduce((sum, c) => sum + (c.affected_population || 1000), 0) || 5000;
+  const lat = challenges.length > 0 ? challenges[0].latitude : 23.3441;
+  const lng = challenges.length > 0 ? challenges[0].longitude : 85.3096;
+
+  const clusterId = `CLUS-${district.substring(0, 3).toUpperCase()}-${primary_domain.substring(0, 3).toUpperCase()}-${Math.floor(100 + Math.random() * 899)}`;
+  const cluster: ChallengeCluster = {
+    id: clusterId,
+    cluster_title,
+    primary_domain,
+    district,
+    report_count: challenges.length,
+    affected_population: totalPop,
+    severity,
+    centroid_lat: lat,
+    centroid_lng: lng,
+    related_challenge_ids: challenge_ids,
+    description: description || `Systemic ${primary_domain} problem cluster grouping recurring citizen reports in ${district}.`,
+    status: 'ACTIVE',
+    associated_project_ids: [],
+    created_at: new Date().toISOString(),
+  };
+
+  db.insert('challenge_clusters', cluster);
+
+  // Update challenges with cluster_id
+  challenge_ids.forEach((cId: string) => {
+    db.update('challenges', cId, { cluster_id: clusterId });
+  });
+
+  db.logAudit(
+    req.user!.id,
+    req.user!.full_name,
+    req.user!.role,
+    'CREATE_CLUSTER',
+    'CLUSTER',
+    cluster.id,
+    `Created cluster "${cluster_title}" grouping ${challenge_ids.length} challenges`
+  );
+
+  return res.status(201).json({ message: 'Cluster created successfully', cluster });
+});
+
+// Associate challenge with existing cluster
+router.post('/clusters/:id/challenges', authenticateToken, requireRole(['government', 'panchayat_ulb', 'admin']), (req: AuthRequest, res: Response) => {
+  const cluster = db.findOne('challenge_clusters', (c) => c.id === req.params.id);
+  if (!cluster) return res.status(404).json({ error: 'Cluster not found' });
+
+  const { challenge_id } = req.body;
+  const challenge = db.findOne('challenges', (c) => c.id === challenge_id);
+  if (!challenge) return res.status(404).json({ error: 'Challenge not found' });
+
+  const updatedIds = Array.from(new Set([...cluster.related_challenge_ids, challenge_id]));
+  const updatedCluster = db.update('challenge_clusters', cluster.id, {
+    related_challenge_ids: updatedIds,
+    report_count: updatedIds.length,
+    affected_population: cluster.affected_population + (challenge.affected_population || 0),
+  });
+
+  db.update('challenges', challenge.id, { cluster_id: cluster.id });
+
+  db.logAudit(
+    req.user!.id,
+    req.user!.full_name,
+    req.user!.role,
+    'ADD_CHALLENGE_TO_CLUSTER',
+    'CLUSTER',
+    cluster.id,
+    `Added challenge #${challenge.id} to cluster "${cluster.cluster_title}"`
+  );
+
+  return res.json({ message: 'Challenge added to cluster', cluster: updatedCluster });
+});
+
 // ==========================================
 // 4. UNIVERSITIES & FACULTY
 // ==========================================
@@ -622,6 +708,44 @@ router.put('/projects/:id/milestones/:mId', authenticateToken, requireRole(['fac
   return res.json({ message: 'Milestone updated', milestone: updatedMilestone });
 });
 
+// Student / Team submits evidence for milestone review
+router.put('/projects/:id/milestones/:mId/submit', authenticateToken, requireRole(['student', 'faculty', 'university_admin', 'admin']), (req: AuthRequest, res: Response) => {
+  const project = db.findOne('projects', (p) => p.id === req.params.id);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+
+  const milestone = db.findOne('project_milestones', (m) => m.id === req.params.mId);
+  if (!milestone) return res.status(404).json({ error: 'Milestone not found' });
+
+  const { submission_evidence, notes } = req.body;
+  const updatedMilestone = db.update('project_milestones', milestone.id, {
+    submission_evidence: submission_evidence || milestone.submission_evidence,
+    mentor_feedback: notes ? `Student Notes: ${notes}` : milestone.mentor_feedback,
+    status: 'SUBMITTED',
+  });
+
+  db.logAudit(
+    req.user!.id,
+    req.user!.full_name,
+    req.user!.role,
+    'SUBMIT_MILESTONE_EVIDENCE',
+    'PROJECT',
+    project.id,
+    `Submitted evidence for milestone "${milestone.title}"`
+  );
+
+  // Notify faculty mentor
+  db.addNotification({
+    user_id: project.lead_faculty_id,
+    role_target: 'faculty',
+    title: 'Milestone Evidence Submitted for Review',
+    message: `${req.user!.full_name} submitted evidence for milestone "${milestone.title}" in project "${project.title}".`,
+    link: `/projects/${project.id}`,
+    type: 'info',
+  });
+
+  return res.json({ message: 'Milestone evidence submitted successfully', milestone: updatedMilestone });
+});
+
 router.post('/projects/:id/milestones', authenticateToken, requireRole(['faculty', 'university_admin', 'student', 'admin']), (req: AuthRequest, res: Response) => {
   const { title, description, target_irl, due_date } = req.body;
   const m: ProjectMilestone = {
@@ -675,6 +799,158 @@ router.post('/projects/:id/comments', authenticateToken, (req: AuthRequest, res:
 
   db.insert('project_comments', comment);
   return res.status(201).json(comment);
+});
+
+// ==========================================
+// TEAM FORMATION, COLLABORATION & IMPACT
+// ==========================================
+
+// Add multidisciplinary team member
+router.post('/projects/:id/team', authenticateToken, requireRole(['faculty', 'university_admin', 'admin']), (req: AuthRequest, res: Response) => {
+  const project = db.findOne('projects', (p) => p.id === req.params.id);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+
+  const { name, email, role, department, skills } = req.body;
+  if (!name || !role) {
+    return res.status(400).json({ error: 'Name and role are required' });
+  }
+
+  const newMember: ProjectTeamMember = {
+    id: `TM-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+    project_id: project.id,
+    user_id: req.body.user_id || `USER-${Date.now().toString().slice(-4)}`,
+    name,
+    email: email || `${name.toLowerCase().replace(/\s+/g, '.')}@uni.edu.in`,
+    role: role || 'student_member',
+    department: department || 'Engineering & Agriculture',
+    skills: Array.isArray(skills) ? skills : typeof skills === 'string' ? skills.split(',').map((s: string) => s.trim()) : ['Multidisciplinary R&D'],
+  };
+
+  db.insert('project_team_members', newMember);
+  db.logAudit(
+    req.user!.id,
+    req.user!.full_name,
+    req.user!.role,
+    'ADD_TEAM_MEMBER',
+    'PROJECT',
+    project.id,
+    `Added ${newMember.name} (${newMember.role}) to team`
+  );
+
+  return res.status(201).json({ message: 'Team member added successfully', member: newMember });
+});
+
+// Remove team member from project
+router.delete('/projects/:id/team/:memberId', authenticateToken, requireRole(['faculty', 'university_admin', 'admin']), (req: AuthRequest, res: Response) => {
+  const project = db.findOne('projects', (p) => p.id === req.params.id);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+
+  const deleted = db.delete('project_team_members', req.params.memberId);
+  if (!deleted) return res.status(404).json({ error: 'Team member not found' });
+
+  db.logAudit(
+    req.user!.id,
+    req.user!.full_name,
+    req.user!.role,
+    'REMOVE_TEAM_MEMBER',
+    'PROJECT',
+    project.id,
+    `Removed team member #${req.params.memberId}`
+  );
+
+  return res.json({ message: 'Team member removed successfully' });
+});
+
+// Record industry sponsorship / grant directly from project workspace
+router.post('/projects/:id/collaborations', authenticateToken, requireRole(['industry', 'csr_org', 'admin']), (req: AuthRequest, res: Response) => {
+  const project = db.findOne('projects', (p) => p.id === req.params.id);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+
+  const { industry_id, collaboration_type, amount_inr, description } = req.body;
+  const industry = db.findOne('industries', (i) => i.id === industry_id) || db.getTable('industries')[0];
+
+  const collab: IndustryCollaboration = {
+    id: `IC-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+    project_id: project.id,
+    project_title: project.title,
+    industry_id: industry?.id || 'IND-TATA',
+    industry_name: req.user!.organization_name || industry?.name || 'Industry CSR Partner',
+    collaboration_type: collaboration_type || 'Offer Funding',
+    amount_inr: Number(amount_inr) || 200000,
+    description: description || 'Industry commitment to sponsor prototype development and testing.',
+    status: 'ACTIVE',
+    created_at: new Date().toISOString(),
+  };
+
+  db.insert('industry_collaborations', collab);
+  db.logAudit(
+    req.user!.id,
+    req.user!.full_name,
+    req.user!.role,
+    'INDUSTRY_COLLABORATION',
+    'PROJECT',
+    project.id,
+    `${collab.industry_name} pledged ${collab.collaboration_type} (₹${collab.amount_inr?.toLocaleString()})`
+  );
+
+  // Notify lead mentor
+  db.addNotification({
+    user_id: project.lead_faculty_id,
+    role_target: 'faculty',
+    title: 'New Industry CSR Commitment Received!',
+    message: `${collab.industry_name} committed ${collab.collaboration_type} of ₹${collab.amount_inr?.toLocaleString()} for "${project.title}".`,
+    link: `/projects/${project.id}`,
+    type: 'success',
+  });
+
+  return res.status(201).json({ message: 'Collaboration recorded successfully', collaboration: collab });
+});
+
+// Record or audit verified project impact outcome
+router.post('/projects/:id/impact', authenticateToken, requireRole(['government', 'panchayat_ulb', 'faculty', 'admin', 'industry']), (req: AuthRequest, res: Response) => {
+  const project = db.findOne('projects', (p) => p.id === req.params.id);
+  if (!project) return res.status(404).json({ error: 'Project not found' });
+
+  const { metric_name, predicted_value, verified_value, unit, verified_by, notes } = req.body;
+  if (!metric_name || verified_value === undefined) {
+    return res.status(400).json({ error: 'Metric name and verified value are required' });
+  }
+
+  const record: ImpactRecord = {
+    id: `IMP-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
+    project_id: project.id,
+    challenge_id: project.challenge_id,
+    metric_name,
+    predicted_value: Number(predicted_value) || Number(verified_value),
+    verified_value: Number(verified_value),
+    unit: unit || 'units',
+    verified_by: verified_by || req.user!.full_name,
+    verification_date: new Date().toISOString().split('T')[0],
+    notes: notes || 'Verified via ground inspection and field audit',
+  };
+
+  db.insert('impact_records', record);
+  db.logAudit(
+    req.user!.id,
+    req.user!.full_name,
+    req.user!.role,
+    'RECORD_IMPACT',
+    'PROJECT',
+    project.id,
+    `Recorded impact: ${record.verified_value} ${record.unit} for "${record.metric_name}"`
+  );
+
+  // Notify government and university
+  db.addNotification({
+    user_id: 'USER-GOV-1',
+    role_target: 'government',
+    title: 'New Verified Impact Outcome Audited',
+    message: `${record.metric_name}: ${record.verified_value} ${record.unit} verified for project "${project.title}".`,
+    link: `/projects/${project.id}`,
+    type: 'success',
+  });
+
+  return res.status(201).json({ message: 'Impact outcome recorded and audited successfully', impact_record: record });
 });
 
 // ==========================================

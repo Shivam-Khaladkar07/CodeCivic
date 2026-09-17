@@ -113,7 +113,14 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto px-4 py-12 space-y-8">
       {/* Title */}
-      <div className="text-center max-w-xl mx-auto space-y-2">
+      <div className="text-center max-w-xl mx-auto space-y-3">
+        <div className="flex justify-center mb-1">
+          <img
+            src="/logo.png"
+            alt="CivicForge Logo"
+            className="h-16 w-16 object-cover rounded-2xl shadow-xl border border-cyan-500/20"
+          />
+        </div>
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold">
           <Zap className="h-3.5 w-3.5 fill-current" />
           <span>Evaluation Sandbox • 1-Click Fast Access</span>

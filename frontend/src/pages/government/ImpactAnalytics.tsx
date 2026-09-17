@@ -9,8 +9,10 @@ import {
   ShieldCheck,
   RefreshCw,
   Sparkles,
+  PlusCircle,
+  X,
 } from 'lucide-react';
-import { dashboardsApi } from '../../services/api';
+import { dashboardsApi, projectsApi } from '../../services/api';
 import { ImpactRecord } from '../../types';
 
 export const ImpactAnalytics: React.FC = () => {
@@ -21,19 +23,53 @@ export const ImpactAnalytics: React.FC = () => {
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Audit Modal State
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [metricName, setMetricName] = useState('Farmers Directly Benefited');
+  const [predictedVal, setPredictedVal] = useState('2500');
+  const [verifiedVal, setVerifiedVal] = useState('4200');
+  const [unit, setUnit] = useState('farmers');
+  const [verifiedBy, setVerifiedBy] = useState('Kanke Block Agricultural Officer & District Planning Council');
+  const [notes, setNotes] = useState('Field verified across 4 villages connected to the smart VFD controller.');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const fetchImpact = async () => {
+    try {
+      const res = await dashboardsApi.getImpact();
+      setData(res.data);
+    } catch (err) {
+      console.error('Failed to load impact analytics:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchImpact = async () => {
-      try {
-        const res = await dashboardsApi.getImpact();
-        setData(res.data);
-      } catch (err) {
-        console.error('Failed to load impact analytics:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
     fetchImpact();
   }, []);
+
+  const handleRecordAudit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await projectsApi.addImpactRecord('PROJ-JH-AGRI-01', {
+        metric_name: metricName,
+        predicted_value: Number(predictedVal) || 0,
+        verified_value: Number(verifiedVal) || 0,
+        unit,
+        verified_by: verifiedBy,
+        notes,
+      });
+      alert(`Ground audit verified! "${metricName}: ${verifiedVal} ${unit}" recorded.`);
+      setIsAuditModalOpen(false);
+      fetchImpact();
+    } catch (err) {
+      console.error('Failed to record ground audit:', err);
+      alert('Error recording audit verification.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   if (isLoading || !data) {
     return (
@@ -62,9 +98,18 @@ export const ImpactAnalytics: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl font-bold self-start">
-          <ShieldCheck className="h-4 w-4 text-emerald-600" />
-          <span>Independent Ground Audit Verified</span>
+        <div className="flex flex-wrap items-center gap-2 self-start">
+          <button
+            onClick={() => setIsAuditModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs"
+          >
+            <PlusCircle className="h-4 w-4" />
+            <span>+ Record Field Impact Audit</span>
+          </button>
+          <div className="flex items-center gap-2 text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl font-bold">
+            <ShieldCheck className="h-4 w-4 text-emerald-600" />
+            <span>Independent Ground Audit Verified</span>
+          </div>
         </div>
       </div>
 
@@ -241,6 +286,113 @@ export const ImpactAnalytics: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* MODAL: RECORD GROUND AUDIT */}
+      {isAuditModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Official State Outcome Audit</span>
+                <h3 className="text-base font-extrabold text-slate-900">Record Field Verified Impact</h3>
+              </div>
+              <button onClick={() => setIsAuditModalOpen(false)} className="text-slate-400 hover:text-slate-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRecordAudit} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Impact Metric Name *</label>
+                <select
+                  value={metricName}
+                  onChange={(e) => setMetricName(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none font-medium"
+                >
+                  <option value="Farmers Directly Benefited">Farmers Directly Benefited</option>
+                  <option value="Villages & Hamlets Covered">Villages & Hamlets Covered</option>
+                  <option value="Annual Crop Loss Prevented">Annual Crop Loss Prevented</option>
+                  <option value="Diesel Expenditure Saved by Farmers">Diesel Expenditure Saved by Farmers</option>
+                  <option value="Carbon Offset (Clean Solar Blending)">Carbon Offset (Clean Solar Blending)</option>
+                  <option value="Drinking Water Purified (Liters/Day)">Drinking Water Purified (Liters/Day)</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Predicted</label>
+                  <input
+                    type="number"
+                    value={predictedVal}
+                    onChange={(e) => setPredictedVal(e.target.value)}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Verified *</label>
+                  <input
+                    type="number"
+                    required
+                    value={verifiedVal}
+                    onChange={(e) => setVerifiedVal(e.target.value)}
+                    className="w-full p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl outline-none font-bold text-emerald-800"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Unit</label>
+                  <input
+                    type="text"
+                    value={unit}
+                    onChange={(e) => setUnit(e.target.value)}
+                    placeholder="farmers / % / INR"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Auditing / Verification Authority *</label>
+                <input
+                  type="text"
+                  required
+                  value={verifiedBy}
+                  onChange={(e) => setVerifiedBy(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Field Audit Notes</label>
+                <textarea
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAuditModalOpen(false)}
+                  className="px-4 py-2 border border-slate-200 rounded-xl font-semibold hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs disabled:opacity-50"
+                >
+                  {isSubmitting ? 'Recording Audit...' : 'Audit & Save Impact'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

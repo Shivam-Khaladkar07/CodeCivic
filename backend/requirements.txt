@@ -1,0 +1,35 @@
+# CivicForge: AI/ML & Backend Python Services Dependencies
+# Smart India Hackathon 2026
+
+# Web Framework & REST API
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.9.0
+python-multipart>=0.0.12
+
+# Database & Vector Search
+psycopg2-binary>=2.9.9
+pgvector>=0.3.5
+sqlalchemy>=2.0.35
+faiss-cpu>=1.9.0
+
+# AI, NLP & Semantic Embedding Models
+sentence-transformers>=3.1.1
+transformers>=4.45.0
+torch>=2.4.0
+scikit-learn>=1.5.2
+numpy>=1.26.4
+pandas>=2.2.3
+
+# LLM Providers & Abstraction
+google-generativeai>=0.8.0
+openai>=1.50.0
+langchain>=0.3.0
+langchain-community>=0.3.0
+
+# Utilities & Security
+python-dotenv>=1.0.1
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+requests>=2.32.3
+aiohttp>=3.10.6

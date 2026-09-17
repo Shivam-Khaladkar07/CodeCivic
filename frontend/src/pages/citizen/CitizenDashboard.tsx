@@ -1,38 +1,55 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { PlusCircle, CheckCircle, Clock, Sparkles, MapPin, ChevronRight, AlertCircle, ArrowUpRight } from 'lucide-react';
+import { PlusCircle, CheckCircle, Clock, Sparkles, MapPin, ChevronRight, AlertCircle, ArrowUpRight, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { challengesApi } from '../../services/api';
+import { challengesApi, projectsApi } from '../../services/api';
 import { Challenge } from '../../types';
 import { PriorityBadge } from '../../components/common/PriorityBadge';
 
 export const CitizenDashboard: React.FC = () => {
   const { user } = useAuth();
-  const [challenges, setChallenges] = useState<Challenge[]>([]);
+  const [myChallenges, setMyChallenges] = useState<Challenge[]>([]);
+  const [allChallenges, setAllChallenges] = useState<Challenge[]>([]);
+  const [pilotCount, setPilotCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const fetchChallenges = async () => {
+    const fetchCitizenData = async () => {
       try {
-        const res = await challengesApi.getAll({ limit: 10 });
-        setChallenges(res.data.challenges);
+        const [myRes, allRes, projRes] = await Promise.all([
+          user?.id ? challengesApi.getAll({ citizen_id: user.id, limit: 10 }) : Promise.resolve({ data: { challenges: [] } }),
+          challengesApi.getAll({ limit: 10 }),
+          projectsApi.getAll(),
+        ]);
+        setMyChallenges(myRes.data.challenges || []);
+        setAllChallenges(allRes.data.challenges || []);
+
+        const pilots = (projRes.data || []).filter((p: any) => p.irl_level === 'IRL-5' || p.irl_level === 'IRL-6').length;
+        setPilotCount(pilots);
       } catch (err) {
         console.error('Failed to load citizen challenges:', err);
       } finally {
         setIsLoading(false);
       }
     };
-    fetchChallenges();
-  }, []);
+    fetchCitizenData();
+  }, [user?.id]);
+
+  const displayedChallenges = myChallenges.length > 0 ? myChallenges : allChallenges;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       {/* Welcome Banner */}
       <div className="bg-gradient-to-r from-navy-900 to-navy-800 text-white rounded-3xl p-6 sm:p-8 shadow-elevated flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
-          <span className="text-xs font-bold text-brand-blue uppercase tracking-wider">
-            Citizen & Community Portal
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-brand-blue uppercase tracking-wider">
+              Citizen & Community Portal
+            </span>
+            <span className="text-[10px] bg-white/10 text-amber-300 font-bold px-2 py-0.5 rounded-full border border-white/10">
+              Grassroots Innovation Pipeline
+            </span>
+          </div>
           <h1 className="text-2xl sm:text-3xl font-black">
             Welcome back, {user?.full_name || 'Community Member'}
           </h1>
@@ -53,15 +70,15 @@ export const CitizenDashboard: React.FC = () => {
       {/* Quick Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-soft">
-          <span className="text-xs text-slate-500 font-medium block">Total Submitted</span>
-          <span className="text-2xl font-black text-slate-900 mt-1 block">{challenges.length}</span>
+          <span className="text-xs text-slate-500 font-medium block">My Submissions</span>
+          <span className="text-2xl font-black text-slate-900 mt-1 block">{myChallenges.length || displayedChallenges.length}</span>
           <span className="text-[10px] text-emerald-600 font-semibold">Active in System</span>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-soft">
           <span className="text-xs text-slate-500 font-medium block">Panchayat Validated</span>
           <span className="text-2xl font-black text-emerald-600 mt-1 block">
-            {challenges.filter((c) => c.status === 'VALIDATED' || c.status === 'IN_PROJECT').length}
+            {displayedChallenges.filter((c) => c.status === 'VALIDATED' || c.status === 'IN_PROJECT').length}
           </span>
           <span className="text-[10px] text-slate-400">Ground verified</span>
         </div>
@@ -69,15 +86,15 @@ export const CitizenDashboard: React.FC = () => {
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-soft">
           <span className="text-xs text-slate-500 font-medium block">University Matched</span>
           <span className="text-2xl font-black text-purple-600 mt-1 block">
-            {challenges.filter((c) => c.status === 'IN_PROJECT' || c.status === 'MATCHED').length}
+            {displayedChallenges.filter((c) => c.status === 'IN_PROJECT' || c.status === 'MATCHED').length}
           </span>
           <span className="text-[10px] text-purple-600 font-semibold">Under active R&D</span>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-soft">
           <span className="text-xs text-slate-500 font-medium block">Community Pilots</span>
-          <span className="text-2xl font-black text-amber-600 mt-1 block">1</span>
-          <span className="text-[10px] text-amber-600 font-semibold">Kanke Irrigation Pilot</span>
+          <span className="text-2xl font-black text-amber-600 mt-1 block">{pilotCount}</span>
+          <span className="text-[10px] text-amber-600 font-semibold">Deployed in Villages</span>
         </div>
       </div>
 
@@ -85,7 +102,9 @@ export const CitizenDashboard: React.FC = () => {
       <div className="bg-white rounded-3xl border border-slate-200 shadow-soft p-6 space-y-4">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div>
-            <h3 className="text-lg font-bold text-slate-900">My Community Challenges</h3>
+            <h3 className="text-lg font-bold text-slate-900">
+              {myChallenges.length > 0 ? 'My Grassroots Challenges' : 'Community Challenges (Ranchi / State)'}
+            </h3>
             <p className="text-xs text-slate-500">Live status tracking from citizen report to deployable solution</p>
           </div>
           <Link to="/challenges" className="text-xs font-semibold text-brand-blue flex items-center gap-1">
@@ -94,7 +113,7 @@ export const CitizenDashboard: React.FC = () => {
         </div>
 
         <div className="space-y-3">
-          {challenges.slice(0, 5).map((c) => (
+          {displayedChallenges.slice(0, 6).map((c) => (
             <div
               key={c.id}
               className="p-4 rounded-2xl border border-slate-100 hover:border-slate-300 hover:bg-slate-50/60 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -110,6 +129,11 @@ export const CitizenDashboard: React.FC = () => {
                   <span className="text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-medium">
                     {c.status}
                   </span>
+                  {c.id === 'JH-RNC-1001' && (
+                    <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
+                      ★ Golden Scenario
+                    </span>
+                  )}
                   <PriorityBadge score={c.priority_score} size="sm" showLabel={false} />
                 </div>
                 <h4 className="text-sm font-bold text-slate-900 leading-snug">{c.title}</h4>
@@ -139,3 +163,5 @@ export const CitizenDashboard: React.FC = () => {
     </div>
   );
 };
+
+export default CitizenDashboard;

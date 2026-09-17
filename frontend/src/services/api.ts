@@ -9,8 +9,18 @@ import {
   Notification,
 } from '../types';
 
+// Resolve API base URL: prioritize VITE_API_URL from environment, fallback to '/api' for Vite dev proxy
+const resolveApiBaseUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (!envUrl) {
+    return '/api';
+  }
+  const trimmed = envUrl.trim().replace(/\/+$/, '');
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+};
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: resolveApiBaseUrl(),
   headers: {
     'Content-Type': 'application/json',
   },
@@ -46,6 +56,10 @@ export const challengesApi = {
 export const clustersApi = {
   getAll: () => api.get<ChallengeCluster[]>('/clusters'),
   getById: (id: string) => api.get<{ cluster: ChallengeCluster; related_challenges: Challenge[]; associated_projects: Project[] }>(`/clusters/${id}`),
+  create: (data: { cluster_title: string; primary_domain: string; district: string; challenge_ids?: string[]; description?: string; severity?: string }) =>
+    api.post<{ message: string; cluster: ChallengeCluster }>('/clusters', data),
+  addChallenge: (clusterId: string, challengeId: string) =>
+    api.post<{ message: string; cluster: ChallengeCluster }>(`/clusters/${clusterId}/challenges`, { challenge_id: challengeId }),
 };
 
 export const universitiesApi = {
@@ -69,10 +83,20 @@ export const projectsApi = {
   }>(`/projects/${id}`),
   updateMilestone: (projectId: string, milestoneId: string, data: { status: string; mentor_feedback?: string; submission_evidence?: string }) =>
     api.put(`/projects/${projectId}/milestones/${milestoneId}`, data),
+  submitMilestoneEvidence: (projectId: string, milestoneId: string, data: { submission_evidence: string; notes?: string }) =>
+    api.put(`/projects/${projectId}/milestones/${milestoneId}/submit`, data),
   createMilestone: (projectId: string, data: any) => api.post(`/projects/${projectId}/milestones`, data),
   createTask: (projectId: string, data: any) => api.post(`/projects/${projectId}/tasks`, data),
   updateTask: (projectId: string, taskId: string, data: any) => api.put(`/projects/${projectId}/tasks/${taskId}`, data),
   addComment: (projectId: string, message: string) => api.post(`/projects/${projectId}/comments`, { message }),
+  addTeamMember: (projectId: string, data: { name: string; email?: string; role: string; department?: string; skills?: string[] }) =>
+    api.post<{ message: string; member: any }>(`/projects/${projectId}/team`, data),
+  removeTeamMember: (projectId: string, memberId: string) =>
+    api.delete<{ message: string }>(`/projects/${projectId}/team/${memberId}`),
+  addCollaboration: (projectId: string, data: { industry_id?: string; collaboration_type: string; amount_inr?: number; description?: string }) =>
+    api.post<{ message: string; collaboration: any }>(`/projects/${projectId}/collaborations`, data),
+  addImpactRecord: (projectId: string, data: { metric_name: string; predicted_value?: number; verified_value: number; unit?: string; verified_by?: string; notes?: string }) =>
+    api.post<{ message: string; impact_record: any }>(`/projects/${projectId}/impact`, data),
 };
 
 export const industriesApi = {

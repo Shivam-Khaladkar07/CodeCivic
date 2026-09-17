@@ -159,7 +159,9 @@ export class AIService {
   }
 
   /**
-   * Visible 6-step AI analysis pipeline
+   * Visible 6-step AI analysis pipeline supporting Dual Mode:
+   * Mode 1: Live API (Gemini / OpenAI compatible) if AI_MODE === 'live' and AI_API_KEY is configured.
+   * Mode 2: Deterministic Local Intelligent Engine fallback (100% operational offline with zero dependencies).
    */
   public static async analyzeChallenge(
     rawText: string,
@@ -168,6 +170,36 @@ export class AIService {
     urgency: 'low' | 'medium' | 'high' | 'critical' = 'high',
     settings?: SystemSettings
   ): Promise<AIAnalysis> {
+    const aiMode = settings?.ai_mode || process.env.AI_MODE || 'demo';
+    const apiKey = process.env.AI_API_KEY || '';
+    const aiModel = settings?.ai_model || process.env.AI_MODEL || 'gemini-1.5-flash';
+
+    // Attempt Live AI if configured
+    if (aiMode === 'live' && apiKey) {
+      try {
+        const liveResult = await this.callLiveAI(rawText, district, affectedPop, urgency, apiKey, aiModel);
+        if (liveResult) {
+          console.log(`[AIService] Successfully analyzed challenge using Live AI (${aiModel})`);
+          return liveResult;
+        }
+      } catch (err: any) {
+        console.warn(`[AIService] Live AI failed (${err.message || err}). Falling back to Deterministic Local Demo AI.`);
+      }
+    }
+
+    // Deterministic Local Intelligent Engine (Mode B Fallback)
+    return this.analyzeChallengeLocally(rawText, district, affectedPop, urgency);
+  }
+
+  /**
+   * Deterministic local analysis engine (zero external network dependency)
+   */
+  public static analyzeChallengeLocally(
+    rawText: string,
+    district: string,
+    affectedPop = 1000,
+    urgency: 'low' | 'medium' | 'high' | 'critical' = 'high'
+  ): AIAnalysis {
     const textLower = rawText.toLowerCase();
 
     // 1. Classify Primary Domain
@@ -221,6 +253,115 @@ export class AIService {
       embedding,
       created_at: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Live LLM API invocation adapter
+   */
+  private static async callLiveAI(
+    rawText: string,
+    district: string,
+    affectedPop: number,
+    urgency: string,
+    apiKey: string,
+    model: string
+  ): Promise<AIAnalysis | null> {
+    const prompt = `You are the CivicForge AI Intelligence Engine for Jharkhand Societal Innovation Exchange.
+Analyze this grassroots citizen problem:
+"${rawText}"
+District: ${district}
+Affected Population: ${affectedPop}
+Urgency: ${urgency}
+
+Classify into one of the 12 domains: Agriculture, Water Resources, Healthcare, Energy, Sanitation, Environment, Education, Accessibility, Rural Livelihoods, Urban Infrastructure, Public Administration.
+
+Respond with valid JSON ONLY matching this structure:
+{
+  "primary_domain": "string",
+  "secondary_domain": "string",
+  "sub_domain": "string",
+  "summary": "string",
+  "problem_statement": "string",
+  "required_skills": ["string", "string"],
+  "suggested_technologies": ["string", "string"],
+  "sdg_goals": ["string", "string"],
+  "confidence_score": number (80-99)
+}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+
+    try {
+      let responseText = '';
+      if (model.includes('gemini')) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`Gemini API returned status ${res.status}`);
+        const data: any = await res.json();
+        responseText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      } else {
+        // OpenAI / generic format
+        const url = 'https://api.openai.com/v1/chat/completions';
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: model || 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            response_format: { type: 'json_object' },
+            temperature: 0.2,
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error(`OpenAI API returned status ${res.status}`);
+        const data: any = await res.json();
+        responseText = data?.choices?.[0]?.message?.content || '';
+      }
+
+      clearTimeout(timeout);
+      if (!responseText) return null;
+
+      const parsed = JSON.parse(responseText);
+      const embedding = this.generateEmbedding(rawText, parsed.primary_domain || 'Agriculture', district);
+
+      return {
+        id: `AI-LIVE-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        challenge_id: '',
+        summary: parsed.summary || rawText,
+        problem_statement: parsed.problem_statement || rawText,
+        primary_domain: parsed.primary_domain || 'Agriculture',
+        secondary_domain: parsed.secondary_domain || 'Energy',
+        sub_domain: parsed.sub_domain || 'Engineering Solution',
+        required_skills: parsed.required_skills || ['Engineering Analysis'],
+        suggested_technologies: parsed.suggested_technologies || ['IoT Telemetry'],
+        sdg_goals: parsed.sdg_goals || ['SDG 9: Industry & Innovation'],
+        confidence_score: parsed.confidence_score || 92,
+        is_demo_mode: false,
+        pipeline_steps: {
+          language_understood: true,
+          domain_identified: true,
+          duplicates_checked: true,
+          priority_calculated: true,
+          skills_extracted: true,
+          institutions_matched: true,
+        },
+        embedding,
+        created_at: new Date().toISOString(),
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   /**
