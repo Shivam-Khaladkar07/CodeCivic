@@ -44,12 +44,13 @@ export const DistrictMap: React.FC<DistrictMapProps> = ({
 }) => {
   const [districtFilter, setDistrictFilter] = useState<string>(selectedDistrict || 'ALL');
 
-  const filtered = challenges.filter((c) => {
+  const safeChallenges = Array.isArray(challenges) ? challenges : [];
+  const filtered = safeChallenges.filter((c) => {
     if (districtFilter === 'ALL') return true;
-    return c.district.toLowerCase() === districtFilter.toLowerCase();
+    return c.district && c.district.toLowerCase() === districtFilter.toLowerCase();
   });
 
-  const districts = Array.from(new Set(challenges.map((c) => c.district))).sort();
+  const districts = Array.from(new Set(safeChallenges.map((c) => c.district).filter(Boolean))).sort();
 
   return (
     <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-soft bg-white">

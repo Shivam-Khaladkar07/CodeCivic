@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { safeStorage } from '../utils/storage';
 import {
   User,
   Challenge,
@@ -8,6 +9,13 @@ import {
   Industry,
   Notification,
 } from '../types';
+
+export class ApiUnavailableError extends Error {
+  constructor(message = 'CivicForge backend is currently unavailable or returning an invalid response.') {
+    super(message);
+    this.name = 'ApiUnavailableError';
+  }
+}
 
 // Resolve API base URL: prioritize VITE_API_URL from environment, fallback to '/api' for Vite dev proxy
 const resolveApiBaseUrl = (): string => {
@@ -21,19 +29,49 @@ const resolveApiBaseUrl = (): string => {
 
 const api = axios.create({
   baseURL: resolveApiBaseUrl(),
+  timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Intercept requests to attach auth token
+// Intercept requests to attach auth token using safeStorage
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('jsix_token');
+  const token = safeStorage.getItem('jsix_token');
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
+
+// Intercept responses: strictly reject HTML SPA fallback responses, timeouts, and connection drops
+api.interceptors.response.use(
+  (response) => {
+    const contentType = response.headers ? (response.headers['content-type'] || response.headers['Content-Type'] || '') : '';
+    const isHtmlContent = typeof contentType === 'string' && contentType.toLowerCase().includes('text/html');
+    const isHtmlBody =
+      typeof response.data === 'string' &&
+      (response.data.includes('<!DOCTYPE html>') ||
+        response.data.includes('<html') ||
+        response.data.includes('<div id="root">') ||
+        response.data.includes('<head>'));
+
+    if (isHtmlContent || isHtmlBody) {
+      return Promise.reject(
+        new ApiUnavailableError('Received HTML SPA fallback instead of JSON API response from server.')
+      );
+    }
+    return response;
+  },
+  (error) => {
+    if (!error.response || error.code === 'ECONNABORTED' || (error.message && error.message.includes('Network Error'))) {
+      return Promise.reject(
+        new ApiUnavailableError(error.message || 'CivicForge backend API is currently unreachable.')
+      );
+    }
+    return Promise.reject(error);
+  }
+);
 
 export const authApi = {
   login: (email: string, password: string) => api.post<{ token: string; user: User }>('/auth/login', { email, password }),

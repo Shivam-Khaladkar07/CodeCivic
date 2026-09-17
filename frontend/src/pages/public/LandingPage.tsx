@@ -36,15 +36,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenGoldenDemo }) =>
     const fetchData = async () => {
       try {
         const [chRes, clRes, uniRes] = await Promise.all([
-          challengesApi.getAll({ limit: 6 }),
-          clustersApi.getAll(),
-          universitiesApi.getAll(),
+          challengesApi.getAll({ limit: 6 }).catch(() => ({ data: { challenges: [] } })),
+          clustersApi.getAll().catch(() => ({ data: [] })),
+          universitiesApi.getAll().catch(() => ({ data: [] })),
         ]);
-        setChallenges(chRes.data.challenges);
-        setClusters(clRes.data);
-        setUniversities(uniRes.data);
+        setChallenges(Array.isArray(chRes.data?.challenges) ? chRes.data.challenges : []);
+        setClusters(Array.isArray(clRes.data) ? clRes.data : []);
+        setUniversities(Array.isArray(uniRes.data) ? uniRes.data : []);
       } catch (err) {
-        console.error('Failed to load landing page data:', err);
+        console.warn('Backend currently offline, continuing in presentation mode:', err);
+        setChallenges([]);
+        setClusters([]);
+        setUniversities([]);
       } finally {
         setIsLoading(false);
       }
@@ -317,7 +320,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenGoldenDemo }) =>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {challenges.slice(0, 6).map((c) => (
+          {(challenges || []).slice(0, 6).map((c) => (
             <ChallengeCard key={c.id} challenge={c} />
           ))}
         </div>
@@ -334,7 +337,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenGoldenDemo }) =>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {universities.slice(0, 6).map((u) => (
+          {(universities || []).slice(0, 6).map((u) => (
             <div key={u.id} className="bg-white p-3.5 rounded-2xl border border-slate-200 text-center shadow-xs">
               <div className="h-10 w-10 mx-auto rounded-xl bg-blue-50 text-brand-blue flex items-center justify-center font-bold text-xs mb-2">
                 {u.short_code}

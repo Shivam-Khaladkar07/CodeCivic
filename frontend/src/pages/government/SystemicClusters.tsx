@@ -4,23 +4,81 @@ import { Layers, MapPin, Users, AlertTriangle, ArrowRight, ShieldCheck, CheckCir
 import { clustersApi } from '../../services/api';
 import { ChallengeCluster } from '../../types';
 
+const FALLBACK_CLUSTERS: ChallengeCluster[] = [
+  {
+    id: 'CLUS-RNC-AGR-01',
+    cluster_title: 'Low-Voltage Agricultural Feeder Motor Tripping Cluster',
+    primary_domain: 'Agriculture',
+    district: 'Ranchi',
+    report_count: 18,
+    affected_population: 1800,
+    severity: 'critical',
+    centroid_lat: 23.435,
+    centroid_lng: 85.321,
+    related_challenge_ids: ['JH-RNC-1001'],
+    description: 'Recurring power dips along rural feeders tripping irrigation motors in Kanke block.',
+    status: 'ACTIVE',
+    associated_project_ids: ['PROJ-JH-AGRI-01'],
+    created_at: '2024-02-01T10:00:00Z',
+  },
+  {
+    id: 'CLUS-ES-WAT-01',
+    cluster_title: 'Tribal Groundwater Fluoride & Heavy Metal Contamination Cluster',
+    primary_domain: 'Water Resources',
+    district: 'East Singhbhum',
+    report_count: 12,
+    affected_population: 2100,
+    severity: 'critical',
+    centroid_lat: 22.617,
+    centroid_lng: 86.223,
+    related_challenge_ids: ['JH-ES-1003'],
+    description: 'High fluoride and heavy metal levels in drinking tubewells in Potka block.',
+    status: 'ACTIVE',
+    associated_project_ids: ['PROJ-JH-WATER-02'],
+    created_at: '2024-02-05T10:00:00Z',
+  },
+  {
+    id: 'CLUS-DHN-ENV-01',
+    cluster_title: 'Open-Cast Mining Particulate Coal Dust Smog Cluster',
+    primary_domain: 'Environment',
+    district: 'Dhanbad',
+    report_count: 24,
+    affected_population: 3200,
+    severity: 'high',
+    centroid_lat: 23.742,
+    centroid_lng: 86.417,
+    related_challenge_ids: ['JH-DHN-1002'],
+    description: 'Severe coal dust particulate levels around schools along Jharia coal haul corridor.',
+    status: 'ACTIVE',
+    associated_project_ids: [],
+    created_at: '2024-02-10T10:00:00Z',
+  },
+];
+
 export const SystemicClusters: React.FC = () => {
-  const [clusters, setClusters] = useState<ChallengeCluster[]>([]);
+  const [clusters, setClusters] = useState<ChallengeCluster[]>(FALLBACK_CLUSTERS);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const fetchClusters = async () => {
       try {
         const res = await clustersApi.getAll();
-        setClusters(res.data);
+        if (Array.isArray(res.data) && res.data.length > 0) {
+          setClusters(res.data);
+        } else {
+          setClusters(FALLBACK_CLUSTERS);
+        }
       } catch (err) {
-        console.error('Failed to load clusters:', err);
+        console.warn('Backend offline, loaded fallback systemic clusters:', err);
+        setClusters(FALLBACK_CLUSTERS);
       } finally {
         setIsLoading(false);
       }
     };
     fetchClusters();
   }, []);
+
+  const safeClusters = Array.isArray(clusters) ? clusters : FALLBACK_CLUSTERS;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
@@ -41,7 +99,7 @@ export const SystemicClusters: React.FC = () => {
 
         <div className="flex items-center gap-2 text-xs bg-purple-50 text-purple-800 border border-purple-200 px-3 py-1.5 rounded-xl font-bold self-start">
           <Layers className="h-4 w-4 text-purple-600" />
-          <span>{clusters.length} Active Systemic Clusters</span>
+          <span>{safeClusters.length} Active Systemic Clusters</span>
         </div>
       </div>
 
@@ -72,7 +130,7 @@ export const SystemicClusters: React.FC = () => {
 
       {/* Clusters List */}
       <div className="space-y-6">
-        {clusters.map((cluster) => {
+        {safeClusters.map((cluster) => {
           const isGolden = cluster.id === 'CLUS-RNC-AGR-01';
           return (
             <div
