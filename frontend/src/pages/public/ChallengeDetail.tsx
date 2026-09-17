@@ -211,7 +211,7 @@ export const ChallengeDetail: React.FC = () => {
     }
   };
 
-  if (isLoading) {
+  if (isLoading && !challenge) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-20 text-center text-xs text-slate-400">
         Loading challenge intelligence...

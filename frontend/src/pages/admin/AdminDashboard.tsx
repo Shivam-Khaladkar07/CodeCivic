@@ -99,7 +99,7 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
-  if (isLoading) {
+  if (isLoading && !settings) {
     return <div className="max-w-7xl mx-auto px-4 py-20 text-center text-xs text-slate-400">Loading System Governance Panel...</div>;
   }
 
